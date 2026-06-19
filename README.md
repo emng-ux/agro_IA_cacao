@@ -1,4 +1,4 @@
-# 🍫 Agro IA Cacao — Agent IA Agropastoral (Filière Cacao)
+# 🌱 Agro IA — Agent IA Agropastoral Bilingue FR/EN
 
 Prototype fonctionnel et interactif d'un **agent IA agentique bilingue (français/anglais)**,
 conçu pour fonctionner **en ligne** et **en mode Edge Computing (hors connexion Internet)**.
@@ -17,11 +17,67 @@ Il aide les conseillers agropastoraux à accompagner les producteurs de cacao da
 - la génération (avec **validation obligatoire du conseiller**) d'un **plan stratégique et
   opérationnel**.
 
-## 🚀 Démarrage rapide / Quick start
+Ce dépôt contient **deux agents IA complémentaires** :
+
+| App | Description | Commande |
+|-----|-------------|---------|
+| `app.py` | Agent IA Filière Cacao (diagnostic EFA, financier, références) | `streamlit run app.py` |
+| `strategic_agent.py` | **Agent IA Analyse Stratégique OPA/EFA** (SWOT, PESTEL, Porter, BCG, Ansoff, Étoile) | `streamlit run strategic_agent.py` |
+
+---
+
+## 🚀 Agent IA Analyse Stratégique OPA/EFA (NEW)
+
+### Fonctionnalités principales
+
+- 📂 **Import de diagnostics** au format Word (`.docx`) ou PDF
+- 🤖 **Analyse IA automatique** par Claude (Anthropic) pour remplir chaque outil
+- ⭐ **Étoile du Conseil** — radar 6 branches interactif
+- 🔲 **SWOT** — matrice colorée avec synthèse
+- 🌐 **PESTEL** — tableau et fiches par facteur
+- ⚔️ **5 Forces de Porter** — graphique d'intensité concurrentielle
+- 📦 **Matrice BCG** — scatter plot quadrants
+- 🚀 **Matrice d'Ansoff** — 4 quadrants de croissance
+- 📄 **Rapport de synthèse** exportable en Markdown
+- 🔎 **Mode démo** fonctionnel sans clé API (analyses illustratives)
+- 🌍 **Bilingue FR/EN** avec switch instantané
+
+### Démarrage rapide / Quick start
 
 ```bash
 pip install -r requirements.txt
-streamlit run app.py
+streamlit run strategic_agent.py
+```
+
+#### Avec clé API Claude (analyse IA réelle)
+
+1. Créez un compte sur [console.anthropic.com](https://console.anthropic.com)
+2. Copiez votre clé API (`sk-ant-...`)
+3. Entrez-la dans la barre latérale de l'application (🔑 icône)
+
+#### Sans clé API (mode démo)
+
+L'application fonctionne sans clé API avec des analyses illustratives typiques d'une OPA cacaoyère d'Afrique centrale.
+
+---
+
+## 📂 Structure du projet
+
+```
+agro_IA_Cacao/
+├── app.py                      # Agent IA Filière Cacao (diagnostic EFA)
+├── strategic_agent.py          # Agent IA Analyse Stratégique OPA/EFA ← NEW
+├── requirements.txt
+├── .streamlit/config.toml
+├── data/                       # Base SQLite locale (Edge/offline)
+└── modules/
+    ├── i18n.py                 # Traductions app.py
+    ├── i18n_strat.py           # Traductions strategic_agent.py ← NEW
+    ├── ai_strat.py             # Moteur d'analyse IA (Claude API) ← NEW
+    ├── doc_extractor.py        # Extraction texte PDF/DOCX ← NEW
+    ├── reference_data.py       # Références technico-économiques cacao
+    ├── financial_engine.py     # Moteur de calculs financiers
+    └── storage.py              # Stockage local SQLite
 ```
 
 L'application s'ouvre dans le navigateur à l'adresse `http://localhost:8501`.
