@@ -3,3 +3,7 @@ __pycache__/
 data/*.db
 .venv/
 .DS_Store
+
+rapports/node_modules/
+rapports/package-lock.json
+rapports/package.json
