@@ -74,6 +74,9 @@ DEFAULTS = {
     "lang": "fr",
     "org_type": "opa",
     "api_key": "",
+    "ollama_url": "http://localhost:11434",
+    "ollama_model": "llama3",
+    "backend": "demo",   # "claude" | "ollama" | "demo"
     "doc_text": "",
     "doc_name": "",
     "doc_pages": 0,
@@ -158,19 +161,58 @@ with st.sidebar:
 
     st.divider()
 
-    # API Key
-    with st.expander("🔑 " + _t("api_key_label"), expanded=False):
-        api_input = st.text_input(
-            _t("api_key_label"),
-            value=st.session_state.api_key,
-            type="password",
-            help=_t("api_key_help"),
-            label_visibility="collapsed",
-        )
-        st.session_state.api_key = api_input
+    # ── Backend selector ──────────────────────────
+    backend = st.radio(
+        "🧠 Moteur IA / AI Engine",
+        options=["claude", "ollama", "demo"],
+        format_func=lambda x: {
+            "claude": "☁️ Claude API (Anthropic)",
+            "ollama": "🖥️ Ollama (local / Edge)",
+            "demo":   "🔎 Mode démo (sans IA)",
+        }[x],
+        index=["claude", "ollama", "demo"].index(st.session_state.backend),
+    )
+    st.session_state.backend = backend
 
-    if st.session_state.api_key:
-        st.success(_t("api_key_set"))
+    if backend == "claude":
+        with st.expander("🔑 " + _t("api_key_label"), expanded=True):
+            api_input = st.text_input(
+                _t("api_key_label"),
+                value=st.session_state.api_key,
+                type="password",
+                help=_t("api_key_help"),
+                label_visibility="collapsed",
+            )
+            st.session_state.api_key = api_input
+        if st.session_state.api_key:
+            st.success(_t("api_key_set"))
+        else:
+            st.warning("Entrez votre clé API Claude.")
+
+    elif backend == "ollama":
+        with st.expander("🖥️ Configuration Ollama", expanded=True):
+            ollama_url = st.text_input(
+                "URL Ollama",
+                value=st.session_state.ollama_url,
+                help="Ex: http://localhost:11434",
+            )
+            st.session_state.ollama_url = ollama_url
+
+            # Try to list available models
+            models = ai_strat.list_ollama_models(ollama_url)
+            if models:
+                st.session_state.ollama_model = st.selectbox(
+                    "Modèle", options=models,
+                    index=models.index(st.session_state.ollama_model)
+                    if st.session_state.ollama_model in models else 0,
+                )
+                st.success(f"✅ Ollama connecté — {len(models)} modèle(s)")
+            else:
+                st.session_state.ollama_model = st.text_input(
+                    "Modèle (manuel)", value=st.session_state.ollama_model
+                )
+                st.warning("Ollama non détecté. Vérifiez qu'il est lancé.")
+
     else:
         st.info(_t("api_key_missing"))
 
@@ -181,19 +223,29 @@ with st.sidebar:
 # ─────────────────────────────────────────────
 # HELPER : run AI for one tool
 # ─────────────────────────────────────────────
+def _ai_kwargs() -> dict:
+    """Return kwargs for ai_strat.analyze / analyze_all based on selected backend."""
+    b = st.session_state.backend
+    return {
+        "api_key":      st.session_state.api_key      if b == "claude" else "",
+        "ollama_url":   st.session_state.ollama_url   if b == "ollama" else "",
+        "ollama_model": st.session_state.ollama_model if b == "ollama" else "llama3",
+    }
+
+
 def run_ai(tool: str) -> dict | list:
     text = st.session_state.doc_text
     if not text:
         st.warning(_t("no_text_warning"))
         return {}
-    with st.spinner(_t("generating")):
+    backend_label = {"claude": "Claude API", "ollama": "Ollama local", "demo": "Mode démo"}
+    with st.spinner(f"{_t('generating')} ({backend_label.get(st.session_state.backend, '')})"):
         try:
             result = ai_strat.analyze(
-                text,
-                tool,
+                text, tool,
                 st.session_state.lang,
                 st.session_state.org_type,
-                st.session_state.api_key,
+                **_ai_kwargs(),
             )
             return result
         except Exception as e:
@@ -206,13 +258,14 @@ def run_all_ai():
     if not text:
         st.warning(_t("no_text_warning"))
         return
-    with st.spinner(_t("analyze_running")):
+    backend_label = {"claude": "Claude API", "ollama": "Ollama local", "demo": "Mode démo"}
+    with st.spinner(f"{_t('analyze_running')} ({backend_label.get(st.session_state.backend, '')})"):
         try:
             all_results = ai_strat.analyze_all(
                 text,
                 st.session_state.lang,
                 st.session_state.org_type,
-                st.session_state.api_key,
+                **_ai_kwargs(),
             )
             st.session_state.res_etoile = all_results.get("etoile", {})
             st.session_state.res_swot = all_results.get("swot", {})

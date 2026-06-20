@@ -1,6 +1,9 @@
 """
-AI-powered strategic analysis using Anthropic Claude API.
-Falls back to illustrative demo data when no API key is provided.
+AI-powered strategic analysis.
+Supports three backends:
+  1. Anthropic Claude API  (api_key provided)
+  2. Ollama local LLM      (ollama_url + model provided, no api_key)
+  3. Demo mode             (no api_key, no ollama_url)
 """
 from __future__ import annotations
 import json
@@ -8,7 +11,7 @@ import re
 
 
 # ---------------------------------------------------------------------------
-# DEMO DATA (used when no API key)
+# DEMO DATA
 # ---------------------------------------------------------------------------
 
 DEMO_FR = {
@@ -53,308 +56,228 @@ DEMO_FR = {
         "synthesis": "La situation appelle une stratégie SO (mobiliser les forces pour saisir les opportunités) : valoriser le terroir et la certification pour accéder aux marchés premium, et une stratégie WT (réduire les faiblesses face aux menaces) : rénover le verger et sécuriser le foncier.",
     },
     "pestel": {
-        "politique": [
-            "Programme national de développement du cacao (PNDC) peu opérationnel",
-            "Instabilité institutionnelle affectant les subventions aux intrants",
-            "Soutien des bailleurs (UE, AFD) aux coopératives certifiées",
-        ],
-        "economique": [
-            "Flambée des prix mondiaux du cacao (2023-2024 : +150%)",
-            "Inflation des coûts des intrants (engrais, pesticides)",
-            "Dévaluation monétaire augmentant le coût des importations",
-            "Accès limité au crédit agricole formel (taux >18%/an)",
-        ],
-        "social": [
-            "Exode rural des jeunes vers les villes",
-            "Féminisation partielle de la production mais inégalités persistantes",
-            "Conflits fonciers intergénérationnels",
-            "Forte tradition coopérative dans la région",
-        ],
-        "techno": [
-            "Diffusion des smartphones facilitant le conseil agricole numérique",
-            "Semences améliorées disponibles mais peu adoptées",
-            "Techniques de fermentation et séchage peu maîtrisées",
-            "Traçabilité numérique requise par les certifications",
-        ],
-        "environnement": [
-            "Déforestation réduisant le couvert arboré protecteur",
-            "Changement climatique : stress hydrique en hausse",
-            "Pression de la maladie des cabosses noires et du swollen shoot",
-            "Règlement européen sur la déforestation (EUDR) créant de nouvelles exigences",
-        ],
-        "legal": [
-            "EUDR impose la traçabilité géo-localisée de la production",
-            "Loi coopérative nationale contraignante pour la gouvernance",
-            "Absence de protection légale forte des droits fonciers coutumiers",
-        ],
+        "politique": ["Programme national de développement du cacao peu opérationnel", "Soutien des bailleurs (UE, AFD) aux coopératives certifiées"],
+        "economique": ["Flambée des prix mondiaux du cacao (2023-2024)", "Inflation des coûts des intrants", "Accès limité au crédit agricole formel (taux >18%/an)"],
+        "social": ["Exode rural des jeunes", "Forte tradition coopérative dans la région"],
+        "techno": ["Diffusion des smartphones facilitant le conseil numérique", "Semences améliorées disponibles mais peu adoptées"],
+        "environnement": ["Changement climatique : stress hydrique en hausse", "Pression des maladies (capsides, pourriture brune)"],
+        "legal": ["Règlement européen sur la déforestation (EUDR)", "Loi coopérative nationale contraignante pour la gouvernance"],
     },
     "porter": {
-        "nouveaux": {"score": 2, "comment": "Barrières à l'entrée modérées : capital foncier et apprentissage nécessaires. Risque limité de nouveaux producteurs à court terme."},
-        "fournisseurs": {"score": 4, "comment": "Forte dépendance aux fournisseurs d'intrants importés (engrais, pesticides). Peu d'alternatives locales. Pouvoir de négociation élevé des distributeurs agréés."},
-        "clients": {"score": 4, "comment": "Oligopsone : 2-3 grands acheteurs dominent. Fixent les prix. La certification réduit légèrement cette dépendance."},
-        "substituts": {"score": 2, "comment": "Peu de substituts directs au cacao. Concurrence avec d'autres cultures de rente (café, palmier) pour l'usage des terres."},
-        "rivalite": {"score": 3, "comment": "Compétition entre OPA pour les marchés certifiés. Pression des collecteurs informels concurrençant la collecte coopérative."},
-        "synthesis": "La filière est dominée par un fort pouvoir des acheteurs et des fournisseurs. La stratégie recommandée est de renforcer le pouvoir de marché via la certification, la transformation locale et les alliances entre coopératives.",
+        "nouveaux": {"score": 2, "comment": "Barrières à l'entrée modérées : capital foncier et apprentissage nécessaires."},
+        "fournisseurs": {"score": 4, "comment": "Forte dépendance aux fournisseurs d'intrants importés. Pouvoir de négociation élevé."},
+        "clients": {"score": 4, "comment": "Oligopsone : 2-3 grands acheteurs dominent. Fixent les prix."},
+        "substituts": {"score": 2, "comment": "Peu de substituts directs au cacao."},
+        "rivalite": {"score": 3, "comment": "Compétition entre OPA pour les marchés certifiés."},
+        "synthesis": "La filière est dominée par un fort pouvoir des acheteurs et des fournisseurs. Stratégie : certification, transformation locale et alliances entre coopératives.",
     },
     "bcg": [
         {"activity": "Cacao conventionnel", "share": 0.6, "growth": 8.0, "quadrant": "Star"},
-        {"activity": "Cacao certifié (Rainforest)", "share": 0.3, "growth": 15.0, "quadrant": "Question mark"},
+        {"activity": "Cacao certifié", "share": 0.3, "growth": 15.0, "quadrant": "Question mark"},
         {"activity": "Cultures vivrières associées", "share": 0.8, "growth": 2.0, "quadrant": "Cash cow"},
         {"activity": "Services de transformation", "share": 0.1, "growth": 25.0, "quadrant": "Question mark"},
     ],
     "ansoff": {
-        "penetration": [
-            "Augmenter le taux d'adoption des bonnes pratiques pour améliorer les rendements",
-            "Renforcer la fidélisation des membres via des services (crédit intrant, conseil)",
-            "Accroître le volume de collecte via l'OPA (capter les ventes informelles)",
-        ],
-        "dev_produit": [
-            "Développer la transformation artisanale : fèves séchées de qualité premium",
-            "Produire du cacao certifié biologique pour valoriser le terroir",
-            "Créer des produits dérivés : beurre de cacao, poudre, liqueur",
-        ],
-        "dev_marche": [
-            "Accéder aux marchés à l'exportation directe (court-circuiter les intermédiaires)",
-            "Développer des contrats avec les chocolatiers artisanaux européens",
-            "Prospecter le marché régional (CEMAC) en développement",
-        ],
-        "diversification": [
-            "Développer l'agroforesterie (cacao + bois, fruit, médicinal) pour de nouveaux marchés carbone",
-            "Créer une marque territoriale combinant cacao et tourisme rural",
-            "Lancer une activité de prestation de services agricoles pour d'autres filières",
-        ],
-        "synthesis": "La stratégie prioritaire est la pénétration de marché (renforcement des rendements et volumes) combinée au développement de produits (certification et transformation). La diversification est une opportunité à moyen terme.",
+        "penetration": ["Augmenter le taux d'adoption des bonnes pratiques", "Renforcer la fidélisation des membres"],
+        "dev_produit": ["Développer la transformation artisanale", "Produire du cacao certifié biologique"],
+        "dev_marche": ["Accéder aux marchés d'exportation directe", "Développer des contrats avec les chocolatiers artisanaux"],
+        "diversification": ["Développer l'agroforesterie (cacao + bois, fruit)", "Créer une marque territoriale"],
+        "synthesis": "Stratégie prioritaire : pénétration de marché combinée au développement de produits. La diversification est une opportunité à moyen terme.",
     },
 }
 
 DEMO_EN = {
     "etoile": {
-        "milieu": {"score": 3, "obs": "Favorable agro-climatic conditions for cocoa, but limited access to rural roads. Active farmer organizations present in the area."},
-        "perf": {"score": 2, "obs": "Average yields below regional benchmarks (500 kg/ha vs. 800 kg/ha expected). Aging plantations, low adoption of good agricultural practices."},
-        "moyens": {"score": 3, "obs": "Secured land access for most members. Insufficient post-harvest equipment. Difficulties sourcing certified inputs."},
-        "politiques": {"score": 2, "obs": "Limited direct institutional support. National orchard rehabilitation program poorly operational in the area. Local taxation perceived as burdensome."},
-        "marches": {"score": 3, "obs": "Market access through cooperative but strong dependence on a single buyer. Fluctuating prices. Sustainability certifications (Rainforest, UTZ) underway for some members."},
-        "finances": {"score": 2, "obs": "Tight cash flow, limited access to formal agricultural credit. Frequent informal debt during lean season. Working capital often uncovered."},
-        "synthesis": "The star reveals structural weaknesses in technical performance and access to public policies. Strengths lie in agro-climatic conditions and partial market access. Priority: technical capacity building and access to finance.",
+        "milieu": {"score": 3, "obs": "Favorable agro-climatic conditions for cocoa, but limited rural road access."},
+        "perf": {"score": 2, "obs": "Average yields below regional benchmarks. Aging plantations, low adoption of good practices."},
+        "moyens": {"score": 3, "obs": "Secured land access for most members. Insufficient post-harvest equipment."},
+        "politiques": {"score": 2, "obs": "Limited direct institutional support. National programs poorly operational."},
+        "marches": {"score": 3, "obs": "Market access through cooperative but single buyer dependence."},
+        "finances": {"score": 2, "obs": "Tight cash flow, limited formal credit access. Working capital often uncovered."},
+        "synthesis": "Structural weaknesses in technical performance and public policy access. Strengths in agro-climatic conditions. Priority: capacity building and finance access.",
     },
     "swot": {
-        "forces": [
-            "Historical experience in cocoa farming (>20 years)",
-            "Strong social cohesion within the OPA",
-            "Favorable terroir (ferrallitic soil, 1400 mm/year rainfall)",
-            "Ongoing certification (Rainforest Alliance) adding value to production",
-            "Organized collection network through the cooperative",
-        ],
-        "faiblesses": [
-            "Aging plantations (>50% of orchards >25 years old)",
-            "Low average yields (500 kg/ha vs. 800 recommended)",
-            "Limited access to certified inputs and equipment",
-            "Little local processing (sale as raw material only)",
-            "Poorly structured financial management of the OPA",
-        ],
-        "opportunites": [
-            "Sustained global demand and rising cocoa prices (2023-2024)",
-            "Orchard rehabilitation programs funded by development partners",
-            "Development of artisanal processing (beans, butter, powder)",
-            "Access to niche markets (organic, fair trade, terroir)",
-            "Digitalization of agricultural services (advisory, traceability)",
-        ],
-        "menaces": [
-            "Climate change: more frequent droughts, deforestation",
-            "Volatility of international commodity prices",
-            "Competition from informal traders weakening cooperative collection",
-            "Growing land pressure in production zones",
-            "Aging farmer population, low youth integration",
-        ],
-        "synthesis": "The situation calls for an SO strategy (leverage strengths to seize opportunities): promote terroir and certification to access premium markets; and a WT strategy (reduce weaknesses against threats): renovate orchards and secure land rights.",
+        "forces": ["Historical cocoa farming experience (>20 years)", "Strong social cohesion", "Favorable terroir"],
+        "faiblesses": ["Aging plantations", "Low average yields", "Limited certified input access"],
+        "opportunites": ["Sustained global cocoa demand", "Orchard rehabilitation programs", "Artisanal processing development"],
+        "menaces": ["Climate change", "International price volatility", "Informal trader competition"],
+        "synthesis": "SO strategy: leverage strengths for market opportunities. WT strategy: reduce weaknesses against threats.",
     },
     "pestel": {
-        "politique": [
-            "National cocoa development program (PNDC) poorly operational",
-            "Institutional instability affecting input subsidies",
-            "Donor support (EU, AFD) to certified cooperatives",
-        ],
-        "economique": [
-            "Global cocoa price surge (2023-2024: +150%)",
-            "Rising input costs (fertilizers, pesticides)",
-            "Currency depreciation increasing import costs",
-            "Limited access to formal agricultural credit (rates >18%/year)",
-        ],
-        "social": [
-            "Rural exodus of youth to urban areas",
-            "Partial feminization of production but persistent inequalities",
-            "Inter-generational land conflicts",
-            "Strong cooperative tradition in the region",
-        ],
-        "techno": [
-            "Smartphone penetration enabling digital agricultural advisory",
-            "Improved seeds available but little adopted",
-            "Fermentation and drying techniques not well mastered",
-            "Digital traceability required by certifications",
-        ],
-        "environnement": [
-            "Deforestation reducing protective tree cover",
-            "Climate change: increasing water stress",
-            "Pressure from black pod disease and swollen shoot virus",
-            "EU Deforestation Regulation (EUDR) creating new requirements",
-        ],
-        "legal": [
-            "EUDR requires geo-located production traceability",
-            "National cooperative law constraining governance",
-            "Weak legal protection of customary land rights",
-        ],
+        "politique": ["National cocoa program poorly operational", "Donor support to certified cooperatives"],
+        "economique": ["Global cocoa price surge", "Rising input costs"],
+        "social": ["Rural youth exodus", "Strong cooperative tradition"],
+        "techno": ["Smartphone penetration enabling digital advisory", "Improved seeds available"],
+        "environnement": ["Climate change: increasing water stress", "Black pod disease pressure"],
+        "legal": ["EU Deforestation Regulation (EUDR)", "National cooperative law constraining governance"],
     },
     "porter": {
-        "nouveaux": {"score": 2, "comment": "Moderate entry barriers: land capital and learning curve required. Limited risk of new entrants in the short term."},
-        "fournisseurs": {"score": 4, "comment": "High dependence on imported inputs (fertilizers, pesticides). Few local alternatives. High bargaining power of licensed distributors."},
-        "clients": {"score": 4, "comment": "Oligopsony: 2-3 large buyers dominate. They set prices. Certification slightly reduces this dependence."},
-        "substituts": {"score": 2, "comment": "Few direct substitutes for cocoa. Competition with other cash crops (coffee, palm oil) for land use."},
-        "rivalite": {"score": 3, "comment": "Competition among OPAs for certified markets. Pressure from informal traders competing with cooperative collection."},
-        "synthesis": "The value chain is dominated by strong buyer and supplier power. The recommended strategy is to build market power through certification, local processing, and cooperative alliances.",
+        "nouveaux": {"score": 2, "comment": "Moderate entry barriers: land capital and learning curve required."},
+        "fournisseurs": {"score": 4, "comment": "High dependence on imported inputs. High bargaining power."},
+        "clients": {"score": 4, "comment": "Oligopsony: 2-3 large buyers dominate and set prices."},
+        "substituts": {"score": 2, "comment": "Few direct substitutes for cocoa."},
+        "rivalite": {"score": 3, "comment": "Competition among OPAs for certified markets."},
+        "synthesis": "Value chain dominated by strong buyer and supplier power. Recommended strategy: certification, local processing, cooperative alliances.",
     },
     "bcg": [
         {"activity": "Conventional cocoa", "share": 0.6, "growth": 8.0, "quadrant": "Star"},
-        {"activity": "Certified cocoa (Rainforest)", "share": 0.3, "growth": 15.0, "quadrant": "Question mark"},
+        {"activity": "Certified cocoa", "share": 0.3, "growth": 15.0, "quadrant": "Question mark"},
         {"activity": "Associated food crops", "share": 0.8, "growth": 2.0, "quadrant": "Cash cow"},
         {"activity": "Processing services", "share": 0.1, "growth": 25.0, "quadrant": "Question mark"},
     ],
     "ansoff": {
-        "penetration": [
-            "Increase adoption rate of good agricultural practices to improve yields",
-            "Strengthen member loyalty through services (input credit, advisory)",
-            "Increase collection volume through OPA (capture informal sales)",
-        ],
-        "dev_produit": [
-            "Develop artisanal processing: premium quality dried beans",
-            "Produce organic-certified cocoa to leverage terroir",
-            "Create derivative products: cocoa butter, powder, liqueur",
-        ],
-        "dev_marche": [
-            "Access direct export markets (bypass intermediaries)",
-            "Develop contracts with European artisan chocolatiers",
-            "Prospect the growing regional market (CEMAC)",
-        ],
-        "diversification": [
-            "Develop agroforestry (cocoa + timber, fruit, medicinal) for carbon markets",
-            "Create a territorial brand combining cocoa and rural tourism",
-            "Launch an agricultural service provision activity for other value chains",
-        ],
-        "synthesis": "Priority strategy is market penetration (yield and volume improvement) combined with product development (certification and processing). Diversification is a medium-term opportunity.",
+        "penetration": ["Increase adoption of good agricultural practices", "Strengthen member loyalty"],
+        "dev_produit": ["Develop artisanal processing", "Produce organic-certified cocoa"],
+        "dev_marche": ["Access direct export markets", "Develop contracts with artisan chocolatiers"],
+        "diversification": ["Develop agroforestry", "Create territorial brand"],
+        "synthesis": "Priority: market penetration + product development. Diversification is a medium-term opportunity.",
     },
 }
 
 
 # ---------------------------------------------------------------------------
-# AI ANALYSIS
+# PROMPT BUILDER
 # ---------------------------------------------------------------------------
 
 def _build_prompt(text: str, tool: str, lang: str, org_type: str) -> str:
-    org_label = "organisation de producteurs agricoles (OPA)" if lang == "fr" else "agricultural producer organization (OPA)"
+    org_label = ("organisation de producteurs agricoles (OPA)" if lang == "fr"
+                 else "agricultural producer organization (OPA)")
     if org_type == "efa":
-        org_label = "exploitation familiale agricole (EFA)" if lang == "fr" else "family farm (EFA)"
+        org_label = ("exploitation familiale agricole (EFA)" if lang == "fr"
+                     else "family farm (EFA)")
 
     if lang == "fr":
-        base = f"""Tu es un expert en développement agricole et en analyse stratégique des {org_label}.
-Analyse le diagnostic suivant et extrais les informations pertinentes pour l'outil {tool}.
-Réponds UNIQUEMENT en JSON valide, sans texte additionnel.
-
-DIAGNOSTIC :
-{text[:6000]}
-
-"""
+        base = (
+            f"Tu es un expert en développement agricole et en analyse stratégique des {org_label}.\n"
+            f"Analyse le diagnostic suivant et extrais les informations pertinentes.\n"
+            f"Réponds UNIQUEMENT en JSON valide, sans texte additionnel.\n\n"
+            f"DIAGNOSTIC :\n{text[:6000]}\n\n"
+        )
     else:
-        base = f"""You are an expert in agricultural development and strategic analysis of {org_label}.
-Analyze the following diagnostic and extract relevant information for the {tool} tool.
-Respond ONLY with valid JSON, no additional text.
+        base = (
+            f"You are an expert in agricultural development and strategic analysis of {org_label}.\n"
+            f"Analyze the following diagnostic and extract relevant information.\n"
+            f"Respond ONLY with valid JSON, no additional text.\n\n"
+            f"DIAGNOSTIC:\n{text[:6000]}\n\n"
+        )
 
-DIAGNOSTIC:
-{text[:6000]}
-
-"""
-    prompts = {
+    schemas = {
         "etoile": (
-            base + (
-                'Return JSON with keys: "milieu", "perf", "moyens", "politiques", "marches", "finances".\n'
-                'Each key maps to {"score": <int 1-5>, "obs": "<string>"}.\n'
-                'Also include "synthesis": "<string>".\n'
-                'Example: {"milieu": {"score": 3, "obs": "..."}, ..., "synthesis": "..."}'
-            )
+            'Return JSON with keys: "milieu","perf","moyens","politiques","marches","finances".\n'
+            'Each maps to {"score":<int 1-5>,"obs":"<string>"}. Also include "synthesis":"<string>".'
         ),
         "swot": (
-            base + (
-                'Return JSON with keys: "forces", "faiblesses", "opportunites", "menaces" (each a list of strings), '
-                'and "synthesis": "<string>".\n'
-                'Example: {"forces": ["...", "..."], "faiblesses": [...], "opportunites": [...], "menaces": [...], "synthesis": "..."}'
-            )
+            'Return JSON: {"forces":[...],"faiblesses":[...],"opportunites":[...],"menaces":[...],"synthesis":"<string>"}.'
         ),
         "pestel": (
-            base + (
-                'Return JSON with keys: "politique", "economique", "social", "techno", "environnement", "legal".\n'
-                'Each key maps to a list of strings.\n'
-                'Example: {"politique": ["...", "..."], "economique": [...], ...}'
-            )
+            'Return JSON: {"politique":[...],"economique":[...],"social":[...],"techno":[...],"environnement":[...],"legal":[...]}.'
         ),
         "porter": (
-            base + (
-                'Return JSON with keys: "nouveaux", "fournisseurs", "clients", "substituts", "rivalite".\n'
-                'Each key maps to {"score": <int 1-5>, "comment": "<string>"}.\n'
-                'Also include "synthesis": "<string>".\n'
-                'Example: {"nouveaux": {"score": 2, "comment": "..."}, ..., "synthesis": "..."}'
-            )
+            'Return JSON with keys "nouveaux","fournisseurs","clients","substituts","rivalite".\n'
+            'Each maps to {"score":<int 1-5>,"comment":"<string>"}. Also include "synthesis":"<string>".'
         ),
         "bcg": (
-            base + (
-                'Return JSON: a list of activity objects.\n'
-                'Each object: {"activity": "<name>", "share": <float 0-2>, "growth": <float>, "quadrant": "<Star|Question mark|Cash cow|Dog>"}\n'
-                'Example: [{"activity": "Cacao", "share": 0.6, "growth": 8.0, "quadrant": "Star"}, ...]'
-            )
+            'Return JSON: a list of objects: {"activity":"<name>","share":<float 0-2>,"growth":<float>,"quadrant":"<Star|Question mark|Cash cow|Dog>"}.'
         ),
         "ansoff": (
-            base + (
-                'Return JSON with keys: "penetration", "dev_produit", "dev_marche", "diversification" (each a list of strings), '
-                'and "synthesis": "<string>".\n'
-                'Example: {"penetration": ["...", "..."], "dev_produit": [...], "dev_marche": [...], "diversification": [...], "synthesis": "..."}'
-            )
+            'Return JSON: {"penetration":[...],"dev_produit":[...],"dev_marche":[...],"diversification":[...],"synthesis":"<string>"}.'
         ),
     }
-    return prompts.get(tool, base)
+    return base + schemas.get(tool, "")
 
 
-def analyze(text: str, tool: str, lang: str, org_type: str, api_key: str) -> dict:
+def _parse_json(raw: str) -> dict | list:
+    raw = raw.strip()
+    raw = re.sub(r"^```(?:json)?\s*", "", raw)
+    raw = re.sub(r"\s*```$", "", raw)
+    return json.loads(raw)
+
+
+# ---------------------------------------------------------------------------
+# BACKENDS
+# ---------------------------------------------------------------------------
+
+def _call_claude(prompt: str, api_key: str) -> str:
+    import anthropic
+    client = anthropic.Anthropic(api_key=api_key.strip())
+    msg = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=2048,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return msg.content[0].text
+
+
+def _call_ollama(prompt: str, ollama_url: str, ollama_model: str) -> str:
+    import urllib.request
+    payload = json.dumps({
+        "model": ollama_model,
+        "prompt": prompt,
+        "stream": False,
+        "options": {"temperature": 0.2, "num_predict": 2048},
+    }).encode()
+    url = ollama_url.rstrip("/") + "/api/generate"
+    req = urllib.request.Request(url, data=payload,
+                                  headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        result = json.loads(resp.read())
+    return result.get("response", "")
+
+
+# ---------------------------------------------------------------------------
+# PUBLIC API
+# ---------------------------------------------------------------------------
+
+def analyze(text: str, tool: str, lang: str, org_type: str,
+            api_key: str = "", ollama_url: str = "", ollama_model: str = "llama3") -> dict | list:
     """
-    Call Claude API to analyze text with the given strategic tool.
-    Returns a dict with the parsed result.
+    Analyze text with strategic tool using the best available backend.
+    Priority: Claude API > Ollama > Demo data.
     """
-    if not api_key or not api_key.strip():
+    if not text:
         return _demo_data(tool, lang)
 
-    try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key.strip())
-        prompt = _build_prompt(text, tool, lang, org_type)
-        message = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=2048,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        raw = message.content[0].text.strip()
-        # Strip markdown code blocks if present
-        raw = re.sub(r"^```(?:json)?\s*", "", raw)
-        raw = re.sub(r"\s*```$", "", raw)
-        return json.loads(raw)
-    except Exception as e:
-        raise RuntimeError(f"AI analysis failed: {e}")
+    prompt = _build_prompt(text, tool, lang, org_type)
+
+    # 1. Claude API
+    if api_key and api_key.strip():
+        try:
+            raw = _call_claude(prompt, api_key)
+            return _parse_json(raw)
+        except Exception as e:
+            raise RuntimeError(f"Claude API error: {e}")
+
+    # 2. Ollama (local)
+    if ollama_url and ollama_url.strip():
+        try:
+            raw = _call_ollama(prompt, ollama_url, ollama_model)
+            return _parse_json(raw)
+        except Exception as e:
+            raise RuntimeError(f"Ollama error: {e}")
+
+    # 3. Demo
+    return _demo_data(tool, lang)
 
 
-def analyze_all(text: str, lang: str, org_type: str, api_key: str) -> dict:
-    """Run all 6 strategic tools and return combined results dict."""
+def analyze_all(text: str, lang: str, org_type: str,
+                api_key: str = "", ollama_url: str = "", ollama_model: str = "llama3") -> dict:
     tools = ["etoile", "swot", "pestel", "porter", "bcg", "ansoff"]
-    results = {}
-    for tool in tools:
-        results[tool] = analyze(text, tool, lang, org_type, api_key)
-    return results
+    return {t: analyze(text, t, lang, org_type, api_key, ollama_url, ollama_model)
+            for t in tools}
 
 
-def _demo_data(tool: str, lang: str) -> dict:
+def list_ollama_models(ollama_url: str) -> list[str]:
+    """Return available Ollama models from the local server."""
+    try:
+        import urllib.request
+        url = ollama_url.rstrip("/") + "/api/tags"
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            data = json.loads(resp.read())
+        return [m["name"] for m in data.get("models", [])]
+    except Exception:
+        return []
+
+
+def _demo_data(tool: str, lang: str) -> dict | list:
     data = DEMO_EN if lang == "en" else DEMO_FR
     return data.get(tool, {})
